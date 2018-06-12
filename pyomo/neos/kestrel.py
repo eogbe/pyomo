@@ -44,20 +44,63 @@ else:
     port = '3332'
 
 #
-# Proxy Transport class provided by NoboNobo.
-# See: http://www.python.org/doc/2.5.2/lib/xmlrpc-client-example.html
+# Transport class adapted from:
+# https://gist.github.com/nathforge/980961#gistcomment-1954000
 #
-class ProxiedTransport(xmlrpclib.Transport):
-    def set_proxy(self, proxy):
-        self.proxy = proxy
+class Transport(xmlrpclib.SafeTransport):
+
+    def __init__(self):
+        xmlrpclib.SafeTransport.__init__(self)
+        self.credentials = None
+        self.host = None
+
+        # Original code block. Note 'url' was an argument to __init__.
+        # self.proxy = None
+        # self.scheme = url.split('://', 1)[0]
+        # self.https = url.startswith('https')
+        # if self.https:
+        #     self.proxy = os.environ.get('https_proxy')
+        # else:
+        #     self.proxy = os.environ.get('http_proxy')
+        # if self.proxy:
+        #     self.https = self.proxy.startswith('https')
+
+        # on *NIX, the proxy can show up either upper or lowercase.
+        # Prefer lower case, and prefer HTTPS over HTTP if the urlscheme
+        # is https.
+        self.scheme = urlscheme
+        self.https = (self.scheme == "https")
+        self.proxy = os.environ.get('http_proxy', os.environ.get(
+                                    'HTTP_PROXY', ''))
+        if self.https:
+            self.proxy = os.environ.get('https_proxy', os.environ.get(
+                                        'HTTPS_PROXY', self.proxy))
+
+    def set_credentials(self, username=None, password=None):
+        self.credentials = '%s:%s' % (username, password)
+
     def make_connection(self, host):
-        self.realhost = host
-        h = six.moves.http_client.HTTP(self.proxy)
-        return h
-    def send_request(self, connection, handler, request_body):
-        connection.putrequest("POST", '%s://%s%s' % (urlscheme, self.realhost, handler))
-    def send_host(self, connection, host):
-        connection.putheader('Host', self.realhost)
+        self.host = host
+        if self.proxy:
+            host = self.proxy.split('://', 1)[-1]
+        if self.credentials:
+            host = '@'.join([self.credentials, host])
+        if self.https:
+            return xmlrpclib.SafeTransport.make_connection(self, host)
+        else:
+            return xmlrpclib.Transport.make_connection(self, host)
+
+    if sys.version_info[0] == 2:
+
+        def send_request(self, connection, handler, request_body):
+            handler = '%s://%s%s' % (self.scheme, self.host, handler)
+            xmlrpclib.Transport.send_request(self, connection, handler, request_body)
+
+    else: # Python 3
+
+        def send_request(self, host, handler, request_body, debug):
+            handler = '%s://%s%s' % (self.scheme, host, handler)
+            return xmlrpclib.Transport.send_request(self, host, handler, request_body, debug)
 
 
 class kestrelAMPL:
@@ -66,22 +109,8 @@ class kestrelAMPL:
         self.setup_connection()
 
     def setup_connection(self):
-        # on *NIX, the proxy can show up either upper or lowercase.
-        # Prefer lower case, and prefer HTTPS over HTTP if the urlscheme
-        # is https.
-        proxy = os.environ.get(
-            'http_proxy', os.environ.get(
-                'HTTP_PROXY', ''))
-        if urlscheme == 'https':
-            proxy = os.environ.get(
-                'https_proxy', os.environ.get(
-                    'HTTPS_PROXY', proxy))
-        if proxy:
-            p = ProxiedTransport()
-            p.set_proxy(proxy)
-            self.neos = xmlrpclib.ServerProxy(urlscheme+"://www.neos-server.org:"+port,transport=p)
-        else:
-            self.neos = xmlrpclib.ServerProxy(urlscheme+"://www.neos-server.org:"+port)
+        tp = Transport()
+        self.neos = xmlrpclib.ServerProxy(urlscheme+"://www.neos-server.org:"+port,transport=tp)
         logger.info("Connecting to the NEOS server ... ")
         try:
             result = self.neos.ping()
