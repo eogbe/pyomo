@@ -54,17 +54,6 @@ class Transport(xmlrpclib.SafeTransport):
         self.credentials = None
         self.host = None
 
-        # Original code block. Note 'url' was an argument to __init__.
-        # self.proxy = None
-        # self.scheme = url.split('://', 1)[0]
-        # self.https = url.startswith('https')
-        # if self.https:
-        #     self.proxy = os.environ.get('https_proxy')
-        # else:
-        #     self.proxy = os.environ.get('http_proxy')
-        # if self.proxy:
-        #     self.https = self.proxy.startswith('https')
-
         # on *NIX, the proxy can show up either upper or lowercase.
         # Prefer lower case, and prefer HTTPS over HTTP if the urlscheme
         # is https.
@@ -75,9 +64,6 @@ class Transport(xmlrpclib.SafeTransport):
         if self.https:
             self.proxy = os.environ.get('https_proxy', os.environ.get(
                                         'HTTPS_PROXY', self.proxy))
-
-    def set_credentials(self, username=None, password=None):
-        self.credentials = '%s:%s' % (username, password)
 
     def make_connection(self, host):
         self.host = host
@@ -90,18 +76,6 @@ class Transport(xmlrpclib.SafeTransport):
         else:
             return xmlrpclib.Transport.make_connection(self, host)
 
-    if sys.version_info[0] == 2:
-
-        def send_request(self, connection, handler, request_body):
-            handler = '%s://%s%s' % (self.scheme, self.host, handler)
-            xmlrpclib.Transport.send_request(self, connection, handler, request_body)
-
-    else: # Python 3
-
-        def send_request(self, host, handler, request_body, debug):
-            handler = '%s://%s%s' % (self.scheme, host, handler)
-            return xmlrpclib.Transport.send_request(self, host, handler, request_body, debug)
-
 
 class kestrelAMPL:
 
@@ -110,7 +84,7 @@ class kestrelAMPL:
 
     def setup_connection(self):
         tp = Transport()
-        self.neos = xmlrpclib.ServerProxy(urlscheme+"://www.neos-server.org:"+port,transport=tp)
+        self.neos = xmlrpclib.ServerProxy(urlscheme+"://www.neos-server.org:"+port, transport=tp)
         logger.info("Connecting to the NEOS server ... ")
         try:
             result = self.neos.ping()
